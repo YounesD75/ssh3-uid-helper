@@ -1,0 +1,6 @@
+# Compiled binaries
+echo_server
+echo_client
+uid_socket
+*.o
+*.out
