@@ -16,7 +16,59 @@ Work in progress (internship project, June-September 2026).
 
 ## Structure
 
-- src/ - C++ proof-of-concept programs (sockets, UID switching, IPC).
+- `src/` - C++ proof-of-concept programs (sockets, UID switching, IPC).
+- `src/run_all_tests.sh` - automated end-to-end test suite (see below).
+- `ssh3-uid-helper.patch` - the SSH3 server patch replacing `net.DialTCP()` with `dialUID()`.
+- `src/dial_uid.go` - Go-side helper client, to be dropped into `ssh3/cmd/`.
+
+## Running the test suite
+
+Everything can be validated with a single script. It builds nothing - it assumes
+the binaries are already compiled - starts every component in the right order,
+runs all eight tests, prints a PASS/FAIL summary, and writes `test_report.txt`.
+
+```bash
+# Run the full suite (needs root: the daemon and the SSH3 server run as root)
+sudo ./src/run_all_tests.sh
+
+# Stop everything the suite left running
+sudo ./src/run_all_tests.sh --clean
+```
+
+The suite deliberately leaves the daemon, the SSH3 server and the forwarded
+connection alive when it finishes, so the evidence stays on screen for
+inspection (`ss`, `ps`) and screenshots.
+
+### What each test covers
+
+| Test | What it proves |
+|------|----------------|
+| TEST 1 | The daemon starts and creates `/tmp/ssh3-helper.sock` with SO_PEERCRED auth |
+| TEST 2 | An unprivileged caller may request a socket under its **own** UID |
+| TEST 3 | A root caller may request a socket under **any** UID (this is how SSH3 calls it) |
+| TEST 4 | A caller requesting a **different** UID is rejected, and no fd is passed |
+| TEST 5 | The resulting socket is owned by the target user, not by the root daemon |
+| TEST 6 | The patched SSH3 server actually invokes `dialUID()` when forwarding TCP |
+| TEST 7 | All binaries exist and are newer than their sources |
+| TEST 8 | The patch file and the `dialUID` call site are present in the tree |
+
+TEST 7 and TEST 8 are static checks and need no root; TEST 1-6 are runtime checks.
+
+### Prerequisites for the suite
+
+The suite expects these to already exist:
+
+```
+src/helper_daemon_v2          g++ -Wall -o helper_daemon_v2 helper_daemon_v2.cpp
+src/helper_client             g++ -Wall -o helper_client helper_client.cpp
+ssh3/ssh3-server-patched      go build -o ssh3-server-patched ./cmd/ssh3-server
+ssh3/ssh3                     the stock SSH3 client
+ssh3/cert.pem, ssh3/priv.key  server certificate and key
+~/.ssh/id_ed25519             the SSH key used by the client
+```
+
+Note: `go build ./cmd/...` fails because `cmd/` holds several `main` packages -
+build `./cmd/ssh3-server` specifically.
 
 ## How to use the SSH3 patch
 
